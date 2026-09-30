@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HCU SUMSEL Operations Portal</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body class="login-page">
+  <div class="login-shell">
+    <section class="login-brand">
+      <div class="brand-mark">JR</div>
+      <div>
+        <p class="eyebrow">PT JASA RAHARJA · KANWIL SUMATERA SELATAN</p>
+        <h1>HCU SUMSEL<br><span>Operations Portal</span></h1>
+        <p class="lead">Satu ruang kerja untuk pegawai, inventaris, kendaraan, pajak & asuransi, pinjam pakai, serta pengendalian pekerjaan HCU.</p>
+      </div>
+      <div class="login-feature-grid">
+        <div><b>Control Center</b><span>Prioritas & reminder harian</span></div>
+        <div><b>Asset 360°</b><span>Histori pemegang aset</span></div>
+        <div><b>Compliance</b><span>Pajak & polis jatuh tempo</span></div>
+        <div><b>Reporting</b><span>Dashboard siap pimpinan</span></div>
+      </div>
+    </section>
+    <section class="login-card glass">
+      <p class="eyebrow">PROTOTYPE V1</p>
+      <h2>Masuk ke Portal</h2>
+      <p class="muted">Mode demo untuk validasi desain. Autentikasi Google Workspace akan dipasang saat tahap produksi.</p>
+      <label>Email / NPP</label>
+      <input id="user" value="admin.hcu" autocomplete="username" />
+      <label>Password</label>
+      <input id="pass" type="password" value="demo" autocomplete="current-password" />
+      <button id="loginBtn" class="primary">Masuk Demo HCU</button>
+      <p class="security-note">🔒 Data personal sensitif tidak ditampilkan pada prototype ini.</p>
+    </section>
+  </div>
+<script>
+document.getElementById('loginBtn').onclick=()=>location.href='portal.html';
+document.addEventListener('keydown',e=>{if(e.key==='Enter')location.href='portal.html'});
+</script>
+</body>
+</html>
