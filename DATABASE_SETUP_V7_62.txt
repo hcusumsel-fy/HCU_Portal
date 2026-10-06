@@ -1,0 +1,40 @@
+HCU SUMSEL OPERATIONS PORTAL V7.62
+GOOGLE DRIVE / GOOGLE SHEETS DATABASE SETUP
+
+Apps Script Web App yang digunakan:
+https://script.google.com/macros/s/AKfycbygUVZjmB6kwpSG43OYMStr_KxJbuzyXPRxsdytHaLxR0rSXgkxkfeyOTfaVXlgVP8Q/exec
+
+WAJIB DI VERCEL:
+1. Buka project portal HCU di Vercel.
+2. Settings -> Environment Variables.
+3. Tambahkan:
+   Name  : HCU_LHU_API_TOKEN
+   Value : isi dengan nilai API_TOKEN yang sama dengan Script Properties pada Google Apps Script.
+4. Pilih Production, Preview, Development (disarankan ketiganya).
+5. Save.
+6. Redeploy project setelah Environment Variable ditambahkan.
+
+OPSIONAL:
+Tambahkan Environment Variable berikut bila ingin URL Apps Script dapat diganti tanpa edit source code:
+   Name  : HCU_LHU_APPS_SCRIPT_URL
+   Value : URL Web App Apps Script di atas.
+
+ALUR V7.62:
+portal.html -> /api/lhu -> Google Apps Script -> Google Sheets + Google Drive
+
+Token API hanya berada di Vercel Serverless Function dan tidak ditulis di portal.html.
+
+TEST SETELAH DEPLOY:
+1. Buka https://DOMAIN-PORTAL-ANDA/api/lhu?action=health
+   Hasil harus success:true.
+2. Buka https://DOMAIN-PORTAL-ANDA/api/lhu?action=listLHU
+   Hasil harus success:true dan data:[...].
+3. Buka menu Keuangan. Status harus berubah menjadi "Database Google Drive aktif".
+4. Upload LHU dan periksa:
+   - LHU_Header bertambah di Google Sheets.
+   - LHU_Detail bertambah di Google Sheets.
+   - PDF masuk ke folder Google Drive Tahun/Bulan.
+
+CATATAN:
+- Data LHU pada V7.62 menggunakan Google Sheets/Drive sebagai sumber utama ketika backend berhasil terhubung.
+- Jika backend belum tersambung, portal masih dapat menampilkan data legacy/browser sebagai fallback, tetapi upload database memerlukan koneksi backend.
