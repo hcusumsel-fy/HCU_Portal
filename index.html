@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>HCU SUMSEL Operations Portal — Login</title>
+<!-- V7.95 Login Background Stretch View -->
+<link rel="icon" type="image/png" href="assets/app-logo.png">
+<style>
+:root{
+  --navy:#082b58;--navy2:#0b3b73;--blue:#0879bd;--cyan:#1aa7df;
+  --ink:#17324d;--muted:#6c8195;--line:#d7e5ee;
+  --shadow:0 28px 70px rgba(5,38,76,.20)
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{
+  margin:0;min-height:100vh;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Arial,sans-serif;
+  color:var(--ink);
+  background:#eaf4fb;
+}
+body.login-page{position:relative;overflow-x:hidden}
+.login-background{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:#eaf4fb;
+  overflow:hidden;
+}
+.login-background::before{display:none}
+.login-background::after{
+  content:'';position:absolute;inset:0;
+  background-image:url('assets/login-background.png');
+  background-repeat:no-repeat;
+  background-position:center center;
+  background-size:100% 100%;
+}
+body.login-page::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:1;
+  background:linear-gradient(90deg,rgba(234,244,251,.05),rgba(255,255,255,.01),rgba(234,244,251,.05));
+}
+.login-shell{
+  min-height:100vh;position:relative;z-index:2;
+  display:flex;align-items:center;justify-content:center;
+  padding:150px 40px 54px;
+}
+.login-brand{display:none}
+.login-card{
+  width:min(430px,92vw);
+  margin-top:74px;
+  background:linear-gradient(145deg,rgba(255,255,255,.86),rgba(245,251,255,.74));
+  border:1px solid rgba(255,255,255,.92);
+  border-radius:28px;
+  padding:28px 30px 24px;
+  box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.82);
+  backdrop-filter:blur(18px) saturate(1.15);
+  -webkit-backdrop-filter:blur(18px) saturate(1.15);
+  position:relative;overflow:hidden;
+}
+.login-card::before{
+  content:'';position:absolute;inset:0 0 auto 0;height:4px;
+  background:linear-gradient(90deg,var(--navy2),var(--blue),var(--cyan));
+}
+.login-card::after{
+  content:'';position:absolute;width:180px;height:180px;border-radius:50%;
+  right:-96px;top:-110px;background:radial-gradient(circle,rgba(26,167,223,.14),transparent 68%);
+  pointer-events:none;
+}
+.app-logo-mini{display:flex;align-items:center;gap:12px;margin-bottom:21px;position:relative;z-index:1}
+.app-logo-mini img{
+  width:48px;height:48px;object-fit:contain;border-radius:14px;
+  border:1px solid rgba(205,224,236,.96);padding:4px;background:rgba(255,255,255,.92)
+}
+.app-logo-mini b{display:block;color:var(--navy);font-size:15px;letter-spacing:.01em}
+.app-logo-mini span{display:block;color:var(--muted);font-size:10.5px;margin-top:2px}
+.eyebrow{margin:0 0 9px;font-size:10px;font-weight:950;letter-spacing:.14em;color:#53728b;text-transform:uppercase}
+.login-card h2{margin:0;color:var(--navy);font-size:28px;line-height:1.1;letter-spacing:-.02em}
+.muted{color:#647b8f;font-size:12px;line-height:1.55;margin:8px 0 20px}
+label{display:block;font-size:10.5px;font-weight:900;color:#4d687e;margin:13px 0 6px}
+input{
+  width:100%;border:1px solid rgba(197,217,230,.95);background:rgba(255,255,255,.84);border-radius:13px;
+  padding:13px 14px;color:var(--ink);outline:none;transition:.18s;box-shadow:inset 0 1px 1px rgba(8,43,88,.02)
+}
+input:focus{border-color:#7dc4e7;background:#fff;box-shadow:0 0 0 4px rgba(26,167,223,.10)}
+.primary{
+  width:100%;border:0;border-radius:13px;padding:13px 16px;margin-top:19px;
+  background:linear-gradient(135deg,var(--navy2),var(--blue));color:#fff;font-weight:950;
+  cursor:pointer;box-shadow:0 12px 25px rgba(8,121,189,.22);transition:.18s ease
+}
+.primary:hover{transform:translateY(-1px);box-shadow:0 15px 28px rgba(8,121,189,.26)}
+.primary:active{transform:translateY(0)}
+.security-note{margin:14px 0 0;color:#71879a;font-size:9.5px;text-align:center}
+.error{display:none;margin-top:12px;padding:10px 12px;border-radius:11px;background:#fff0f1;border:1px solid #f0c5c9;color:#a43b44;font-size:10.5px}
+.error.show{display:block}
+.demo-note{margin-top:13px;padding:9px 11px;border-radius:11px;background:rgba(238,248,255,.80);border:1px solid #cfe9f7;color:#426782;font-size:9.5px;line-height:1.45}
+.login-caption{
+  position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2;
+  padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.56);border:1px solid rgba(255,255,255,.75);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  color:#5e7589;font-size:9.5px;font-weight:700;white-space:nowrap
+}
+@media(max-width:900px){
+  body.login-page::before{background:linear-gradient(180deg,rgba(245,251,255,.08),rgba(238,247,252,.16))}
+  .login-shell{align-items:flex-end;padding:125px 22px 42px}
+  .login-card{margin-top:0;width:min(440px,94vw);padding:25px 25px 22px}
+}
+@media(max-width:560px){
+  .login-shell{min-height:100svh;padding:118px 14px 22px;align-items:flex-end}
+  .login-card{width:100%;border-radius:22px;padding:22px 18px 18px;background:linear-gradient(145deg,rgba(255,255,255,.91),rgba(246,251,255,.84))}
+  .login-card h2{font-size:24px}
+  .app-logo-mini{margin-bottom:16px}
+  .demo-note{font-size:9px}
+  .login-caption{display:none}
+}
+@media(max-height:720px) and (min-width:901px){
+  .login-shell{padding-top:110px;padding-bottom:30px}
+  .login-card{margin-top:40px;padding:23px 27px 20px}
+  .demo-note{display:none}
+}
+</style>
+</head>
+<body class="login-page">
+  <div class="login-background" aria-hidden="true"></div>
+  <main class="login-shell">
+    <section class="login-card" aria-label="Login HCU SUMSEL">
+      <div class="app-logo-mini">
+        <img src="assets/app-logo.png" alt="Logo aplikasi HCU SUMSEL">
+        <div><b>HCU SUMSEL</b><span>Operations Portal</span></div>
+      </div>
+
+      <p class="eyebrow">PORTAL INTERNAL HCU</p>
+      <h2>Masuk ke Portal</h2>
+      <p class="muted">Akses dashboard dan pengelolaan data pegawai HCU Kantor Wilayah Sumatera Selatan.</p>
+
+      <label for="user">Email / NPP</label>
+      <input id="user" value="admin.hcu" autocomplete="username" />
+
+      <label for="pass">Password</label>
+      <input id="pass" type="password" value="demo" autocomplete="current-password" />
+
+      <button id="loginBtn" class="primary" type="button">Masuk HCU</button>
+      <div id="loginError" class="error">Email/NPP atau password belum diisi.</div>
+
+      <div class="demo-note"><b>Mode prototype:</b> autentikasi masih berjalan di browser. Integrasi akun pegawai/Google Workspace akan dipasang pada tahap backend.</div>
+      <p class="security-note">🔒 Portal internal HCU SUMSEL</p>
+    </section>
+  </main>
+  <div class="login-caption">HCU Kantor Wilayah Sumatera Selatan • Internal Portal</div>
+
+<script>
+function login(){
+  const user=document.getElementById('user').value.trim();
+  const pass=document.getElementById('pass').value.trim();
+  const err=document.getElementById('loginError');
+
+  if(!user || !pass){
+    err.classList.add('show');
+    return;
+  }
+
+  err.classList.remove('show');
+  sessionStorage.setItem('hcu_sumsel_authenticated','1');
+  sessionStorage.setItem('hcu_sumsel_user',user);
+  location.href='portal.html';
+}
+document.getElementById('loginBtn').addEventListener('click',login);
+document.addEventListener('keydown',e=>{if(e.key==='Enter') login();});
+</script>
+</body>
+</html>
