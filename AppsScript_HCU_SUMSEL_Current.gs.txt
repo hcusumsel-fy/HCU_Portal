@@ -1,0 +1,1188 @@
+/**************************************************************
+ * HCU SUMSEL - DATABASE API V7.72
+ * Google Apps Script
+ *
+ * Modul:
+ * 1. LHU / Keuangan
+ * 2. Pegawai / Dashboard HCU
+ * 3. Procurement
+ *
+ * Script Properties wajib:
+ * - SPREADSHEET_ID
+ * - LHU_FOLDER_ID
+ * - API_TOKEN
+ **************************************************************/
+
+const PROP = PropertiesService.getScriptProperties();
+const TIMEZONE = 'Asia/Jakarta';
+
+// ============================================================
+// LHU CONFIG
+// ============================================================
+const SHEET_HEADER = 'LHU_Header';
+const SHEET_DETAIL = 'LHU_Detail';
+
+const MONTH_NAMES = [
+  'Januari','Februari','Maret','April','Mei','Juni',
+  'Juli','Agustus','September','Oktober','November','Desember'
+];
+
+const HEADER_COLUMNS = [
+  'LHU_ID','Periode','Tahun','Bulan','Unit','Jenis','Nama_File',
+  'Drive_File_ID','Drive_File_URL','Tanggal_Upload','Upload_Oleh','Status'
+];
+
+const DETAIL_COLUMNS = [
+  'LHU_ID','Kode_Pos','Nama_Pos','Kategori','Tahun_Lalu','Bulan_Ini','YTD',
+  'Anggaran','Growth','Realisasi','Siklikal','Siklikal_Berikutnya'
+];
+
+// ============================================================
+// EMPLOYEE CONFIG
+// ============================================================
+const SHEET_EMPLOYEE = 'Pegawai';
+
+const EMPLOYEE_HEADERS = [
+  'LOKET','UNIT','LOKASI','Loket_Kerja','STATUS PEGAWAI','NPP','NAMA','JABATAN',
+  'GENDER','JOB GRADE','PERSON GRADE','TGL MASUK','MKE','Award','No SK Terakhir',
+  'SK TERAKHIR','MKJ','Remind-Rotasi','Nilai CSS','Reminder_CSS','Nilai Asesment',
+  'Status Asesment','Tahun Asessmen','Pend Awal','Pend Akhir','Penyetaraan',
+  'Base Tunggu','Status Tunggu','Product Knowledge','Diklat Basic',
+  'Diklat Intermediate','Diklat Advance','No SK Job Grade','SK Job Grade','MKJG',
+  'Usulan Grade','NO TELP','EMAIL','Batas CSS','Jalur Karir','STATUS','CATATAN PERSONAL'
+];
+
+const EMPLOYEE_COLUMNS = [
+  'EMP_ID',
+  ...EMPLOYEE_HEADERS,
+  'UPDATED_AT',
+  'UPDATED_BY'
+];
+
+const EMPLOYEE_DATE_FIELDS = new Set([
+  'TGL MASUK','SK TERAKHIR','SK Job Grade'
+]);
+
+
+// ============================================================
+// PROCUREMENT CONFIG
+// ============================================================
+const SHEET_PROCUREMENT = 'Procurement';
+const PROCUREMENT_HEADERS = [
+  'TAHUN','MODE','KRITERIA','NAMA RUP','ANGGARAN','JENIS_PENGADAAN','VENDOR',
+  'NOMINAL','NOMINAL_KONTRAK','EFISIENSI','NO_SPK','TGL_AWAL_SPK','LAMA_KERJA',
+  'TGL_AKHIR_SPK','STATUS_KERJA','JML_DAYS','SPPH','TGL_SPPH','SPH','TGL_SPH',
+  'NEGO','TGL_NEGO','PEMENANG','TGL_PEMENANG','SP/SPK/PPP','TGL_PESAN_SPK_PPP',
+  'LPP/BAST','TGL LPP/BAST','PROGRESS','STATUS_PEKERJAAN','KETERANGAN','LINK DOKUMEN'
+];
+const PROCUREMENT_COLUMNS = ['PROC_ID', ...PROCUREMENT_HEADERS, 'UPDATED_AT', 'UPDATED_BY'];
+const PROCUREMENT_NUMBER_FIELDS = new Set([
+  'TAHUN','ANGGARAN','NOMINAL','NOMINAL_KONTRAK','EFISIENSI','LAMA_KERJA','JML_DAYS','PROGRESS'
+]);
+const PROCUREMENT_BOOL_FIELDS = new Set(['SPPH','SPH','NEGO','PEMENANG','SP/SPK/PPP','LPP/BAST']);
+const PROCUREMENT_DATE_FIELDS = new Set([
+  'TGL_AWAL_SPK','TGL_AKHIR_SPK','TGL_SPPH','TGL_SPH','TGL_NEGO','TGL_PEMENANG',
+  'TGL_PESAN_SPK_PPP','TGL LPP/BAST'
+]);
+const PROCUREMENT_STAGE_FIELDS = ['SPPH','SPH','NEGO','PEMENANG','SP/SPK/PPP','LPP/BAST'];
+
+// ============================================================
+// SETUP
+// ============================================================
+function setupDatabase() {
+  setupLhuDatabase_();
+  setupEmployeeDatabase_();
+  setupProcurementDatabase_();
+  Logger.log('Database HCU SUMSEL siap digunakan.');
+}
+
+function setupLhuDatabase_() {
+  const ss = getSpreadsheet_();
+  let headerSheet = ss.getSheetByName(SHEET_HEADER);
+  let detailSheet = ss.getSheetByName(SHEET_DETAIL);
+
+  if (!headerSheet) headerSheet = ss.insertSheet(SHEET_HEADER);
+  if (!detailSheet) detailSheet = ss.insertSheet(SHEET_DETAIL);
+
+  ensureHeaders_(headerSheet, HEADER_COLUMNS);
+  ensureHeaders_(detailSheet, DETAIL_COLUMNS);
+
+  headerSheet.setFrozenRows(1);
+  detailSheet.setFrozenRows(1);
+
+  headerSheet.getRange(1, 2, headerSheet.getMaxRows(), 1).setNumberFormat('@');
+  if (headerSheet.getMaxRows() > 1) {
+    headerSheet.getRange(2, 10, headerSheet.getMaxRows() - 1, 1)
+      .setNumberFormat('dd/MM/yyyy HH:mm:ss');
+  }
+
+  headerSheet.autoResizeColumns(1, HEADER_COLUMNS.length);
+  detailSheet.autoResizeColumns(1, DETAIL_COLUMNS.length);
+}
+
+function setupEmployeeDatabase() {
+  setupEmployeeDatabase_();
+  Logger.log('Sheet Pegawai siap digunakan.');
+}
+
+function setupEmployeeDatabase_() {
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_EMPLOYEE);
+  if (!sheet) sheet = ss.insertSheet(SHEET_EMPLOYEE);
+
+  ensureHeaders_(sheet, EMPLOYEE_COLUMNS);
+  sheet.setFrozenRows(1);
+
+  // Seluruh data pegawai disimpan sebagai TEXT agar NPP, nomor HP,
+  // grade, tanggal DD/MM/YYYY, dan leading zero tidak berubah.
+  const dataColumnCount = 1 + EMPLOYEE_HEADERS.length;
+  sheet.getRange(1, 1, sheet.getMaxRows(), dataColumnCount).setNumberFormat('@');
+
+  const updatedAtCol = EMPLOYEE_COLUMNS.indexOf('UPDATED_AT') + 1;
+  if (sheet.getMaxRows() > 1) {
+    sheet.getRange(2, updatedAtCol, sheet.getMaxRows() - 1, 1)
+      .setNumberFormat('dd/MM/yyyy HH:mm:ss');
+  }
+
+  sheet.autoResizeColumns(1, EMPLOYEE_COLUMNS.length);
+
+  // Terapkan koreksi data canonical jika sheet sudah pernah terisi.
+  repairWahyuNppInSheet_(sheet);
+}
+
+function setupProcurementDatabase() {
+  setupProcurementDatabase_();
+  Logger.log('Sheet Procurement siap digunakan.');
+}
+
+function setupProcurementDatabase_() {
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_PROCUREMENT);
+  if (!sheet) sheet = ss.insertSheet(SHEET_PROCUREMENT);
+
+  // V7.72: kolom No bukan field database. Jika schema lama masih memiliki
+  // kolom No, data direstrukturisasi otomatis dengan PROC_ID sebagai key.
+  migrateProcurementRemoveDisplayNo_(sheet);
+  ensureHeaders_(sheet, PROCUREMENT_COLUMNS);
+  sheet.setFrozenRows(1);
+
+  // ID dan seluruh tanggal/datetime disimpan sebagai teks untuk mencegah pergeseran timezone.
+  sheet.getRange(1, 1, sheet.getMaxRows(), 1).setNumberFormat('@');
+  PROCUREMENT_DATE_FIELDS.forEach(field => {
+    const col = PROCUREMENT_COLUMNS.indexOf(field) + 1;
+    if (col > 0) sheet.getRange(1, col, sheet.getMaxRows(), 1).setNumberFormat('@');
+  });
+
+  // Nilai uang / angka tetap NUMBER murni tanpa simbol currency di database.
+  PROCUREMENT_NUMBER_FIELDS.forEach(field => {
+    const col = PROCUREMENT_COLUMNS.indexOf(field) + 1;
+    if (col > 0 && sheet.getMaxRows() > 1) {
+      sheet.getRange(2, col, sheet.getMaxRows() - 1, 1).setNumberFormat('0.##');
+    }
+  });
+
+  const updatedAtCol = PROCUREMENT_COLUMNS.indexOf('UPDATED_AT') + 1;
+  if (sheet.getMaxRows() > 1) {
+    sheet.getRange(2, updatedAtCol, sheet.getMaxRows() - 1, 1).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+  }
+  sheet.autoResizeColumns(1, PROCUREMENT_COLUMNS.length);
+}
+
+function migrateProcurementRemoveDisplayNo() {
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_PROCUREMENT);
+  if (!sheet) sheet = ss.insertSheet(SHEET_PROCUREMENT);
+  const migrated = migrateProcurementRemoveDisplayNo_(sheet);
+  setupProcurementDatabase_();
+  Logger.log(migrated ? 'Schema Procurement berhasil dimigrasikan: kolom No dihapus dari database.' : 'Schema Procurement sudah V7.72; tidak ada kolom No yang perlu dihapus.');
+}
+
+function migrateProcurementRemoveDisplayNo_(sheet) {
+  if (!sheet || sheet.getLastRow() < 1 || sheet.getLastColumn() < 1) return false;
+  const oldHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0].map(v => String(v || '').trim());
+  const noIndex = oldHeaders.indexOf('No');
+  if (noIndex < 0) return false;
+
+  const rowCount = Math.max(0, sheet.getLastRow() - 1);
+  const oldRows = rowCount ? sheet.getRange(2, 1, rowCount, oldHeaders.length).getValues() : [];
+  const seen = new Set();
+  const outRows = [];
+
+  oldRows.forEach((row, rowIndex) => {
+    const raw = {};
+    oldHeaders.forEach((header, idx) => { if (header) raw[header] = row[idx]; });
+    if (!Object.values(raw).some(v => String(v === null || v === undefined ? '' : v).trim() !== '')) return;
+
+    const legacyNo = Math.max(0, Math.trunc(number_(raw.No)));
+    let procId = String(raw.PROC_ID || '').trim().toUpperCase();
+    if (!procId && legacyNo) procId = 'PROC-' + String(legacyNo).padStart(4, '0');
+    if (!procId || seen.has(procId)) procId = generateProcurementId_();
+    seen.add(procId);
+    raw.PROC_ID = procId;
+    delete raw.No;
+
+    const record = normalizeProcurementRecord_(raw);
+    const updatedAt = raw.UPDATED_AT instanceof Date ? raw.UPDATED_AT : new Date();
+    const updatedBy = String(raw.UPDATED_BY || 'Migrasi Schema Procurement V7.72');
+    outRows.push([record.PROC_ID, ...PROCUREMENT_HEADERS.map(field => record[field] === undefined ? '' : record[field]), updatedAt, updatedBy]);
+  });
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, PROCUREMENT_COLUMNS.length).setValues([PROCUREMENT_COLUMNS]);
+  if (outRows.length) sheet.getRange(2, 1, outRows.length, PROCUREMENT_COLUMNS.length).setValues(outRows);
+  SpreadsheetApp.flush();
+  return true;
+}
+
+function testConfiguration() {
+  const spreadsheetId = PROP.getProperty('SPREADSHEET_ID');
+  const folderId = PROP.getProperty('LHU_FOLDER_ID');
+  const apiToken = PROP.getProperty('API_TOKEN');
+
+  Logger.log('SPREADSHEET_ID: ' + (spreadsheetId ? 'OK' : 'BELUM ADA'));
+  Logger.log('LHU_FOLDER_ID: ' + (folderId ? 'OK' : 'BELUM ADA'));
+  Logger.log('API_TOKEN: ' + (apiToken ? 'OK' : 'BELUM ADA'));
+
+  if (spreadsheetId) Logger.log('Spreadsheet: ' + SpreadsheetApp.openById(spreadsheetId).getName());
+  if (folderId) Logger.log('Folder LHU: ' + DriveApp.getFolderById(folderId).getName());
+}
+
+// ============================================================
+// WEB API - GET
+// ============================================================
+function doGet(e) {
+  try {
+    const params = e && e.parameter ? e.parameter : {};
+    const action = String(params.action || 'health').trim().toLowerCase();
+
+    if (action === 'health') {
+      return jsonResponse_({
+        success: true,
+        message: 'HCU SUMSEL Database API aktif',
+        serverTime: new Date().toISOString(),
+        timezone: TIMEZONE,
+        modules: ['lhu', 'pegawai', 'procurement']
+      });
+    }
+
+    if (!validateToken_(params.token)) {
+      return jsonResponse_({ success: false, message: 'Token tidak valid.' });
+    }
+
+    // LHU
+    if (action === 'listlhu') return listLHU_();
+    if (action === 'getlhu') return getLHU_(params.period, params.unit);
+
+    // Pegawai
+    if (action === 'listemployees' || action === 'listpegawai') return listEmployees_();
+    if (action === 'getemployee' || action === 'getpegawai') {
+      return getEmployee_(params.empId || params.empid, params.npp);
+    }
+
+    // Procurement
+    if (action === 'listprocurements' || action === 'listprocurement') return listProcurements_();
+    if (action === 'getprocurement') return getProcurement_(params.procId || params.procid);
+
+    return jsonResponse_({ success: false, message: 'Action tidak dikenal.' });
+  } catch (err) {
+    return errorResponse_(err);
+  }
+}
+
+// ============================================================
+// WEB API - POST
+// ============================================================
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    const body = readRequestBody_(e);
+    const action = String(body.action || '').trim().toLowerCase();
+
+    if (!validateToken_(body.token)) {
+      return jsonResponse_({ success: false, message: 'Token tidak valid.' });
+    }
+
+    // LHU
+    if (action === 'savelhu') return saveLHU_(body);
+    if (action === 'deletelhu') return deleteLHU_(body.period, body.unit);
+
+    // Pegawai
+    if (action === 'saveemployee' || action === 'savepegawai') {
+      return saveEmployee_(body.employee || body.record || {}, body.updatedBy || 'Portal HCU Sumsel');
+    }
+    if (action === 'bulkupsertemployees' || action === 'migrateemployees') {
+      return bulkUpsertEmployees_(body.employees || [], body.updatedBy || 'Migrasi Browser HCU');
+    }
+
+    // Procurement
+    if (action === 'saveprocurement') {
+      return saveProcurement_(body.procurement || body.record || {}, body.updatedBy || 'Portal HCU Sumsel');
+    }
+    if (action === 'bulkupsertprocurements' || action === 'migrateprocurements') {
+      return bulkUpsertProcurements_(body.procurements || [], body.updatedBy || 'Migrasi Procurement HCU');
+    }
+
+    return jsonResponse_({ success: false, message: 'Action tidak dikenal.' });
+  } catch (err) {
+    return errorResponse_(err);
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
+  }
+}
+
+// ============================================================
+// EMPLOYEE API
+// ============================================================
+function listEmployees_() {
+  const ss = getSpreadsheet_();
+  const sheet = ss.getSheetByName(SHEET_EMPLOYEE);
+  if (!sheet) {
+    return jsonResponse_({
+      success: true,
+      data: [],
+      count: 0,
+      databaseReady: false,
+      message: 'Sheet Pegawai belum tersedia. Jalankan setupEmployeeDatabase().'
+    });
+  }
+
+  if (sheet.getLastRow() <= 1) {
+    return jsonResponse_({ success: true, data: [], count: 0, databaseReady: true });
+  }
+
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, EMPLOYEE_COLUMNS.length).getValues();
+  const records = values
+    .filter(row => String(row[0] || '').trim() !== '')
+    .map(row => employeeRecordFromRow_(row))
+    .sort((a, b) => employeeIdNumber_(a.EMP_ID) - employeeIdNumber_(b.EMP_ID));
+
+  return jsonResponse_({
+    success: true,
+    data: records,
+    count: records.length,
+    databaseReady: true
+  });
+}
+
+function getEmployee_(empId, npp) {
+  const ss = getSpreadsheet_();
+  const sheet = getRequiredSheet_(ss, SHEET_EMPLOYEE);
+  const targetEmpId = String(empId || '').trim().toUpperCase();
+  const targetNpp = String(npp || '').trim().toUpperCase();
+
+  if (!targetEmpId && !targetNpp) {
+    return jsonResponse_({ success: false, message: 'EMP_ID atau NPP wajib diisi.' });
+  }
+
+  const data = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, EMPLOYEE_COLUMNS.length).getValues()
+    : [];
+
+  for (const row of data) {
+    const record = employeeRecordFromRow_(row);
+    if ((targetEmpId && String(record.EMP_ID).toUpperCase() === targetEmpId) ||
+        (targetNpp && String(record.NPP).toUpperCase() === targetNpp)) {
+      return jsonResponse_({ success: true, data: record });
+    }
+  }
+
+  return jsonResponse_({ success: false, message: 'Pegawai tidak ditemukan.' });
+}
+
+// ============================================================
+// KNOWN EMPLOYEE DATA CORRECTIONS - V7.64
+// ============================================================
+function applyKnownEmployeeCorrections_(recordInput) {
+  const record = { ...(recordInput || {}) };
+  const empId = String(record.EMP_ID || '').trim().toUpperCase();
+  const name = String(record.NAMA || '').trim().toUpperCase();
+
+  // NPP 052542749B adalah milik Muhammad Dzaky Aditya.
+  // Wahyu Hidayat menggunakan NPP 042645239B.
+  if (empId === 'EMP-0067' || name === 'WAHYU HIDAYAT') {
+    record.NPP = '042645239B';
+  }
+
+  return record;
+}
+
+function repairWahyuNppInSheet_(sheet) {
+  if (!sheet || sheet.getLastRow() <= 1) return false;
+
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, EMPLOYEE_COLUMNS.length).getValues();
+  const nppCol = EMPLOYEE_COLUMNS.indexOf('NPP') + 1;
+  let repaired = false;
+
+  values.forEach((row, index) => {
+    const rec = employeeRecordFromRow_(row);
+    const empId = String(rec.EMP_ID || '').trim().toUpperCase();
+    const name = String(rec.NAMA || '').trim().toUpperCase();
+    if (empId === 'EMP-0067' || name === 'WAHYU HIDAYAT') {
+      const currentNpp = String(rec.NPP || '').trim().toUpperCase();
+      if (currentNpp !== '042645239B') {
+        sheet.getRange(index + 2, nppCol).setNumberFormat('@').setValue('042645239B');
+        repaired = true;
+      }
+    }
+  });
+
+  if (repaired) SpreadsheetApp.flush();
+  return repaired;
+}
+
+function repairWahyuNpp() {
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_EMPLOYEE);
+  if (!sheet) {
+    setupEmployeeDatabase_();
+    sheet = ss.getSheetByName(SHEET_EMPLOYEE);
+  }
+
+  if (sheet.getLastRow() <= 1) {
+    Logger.log('Sheet Pegawai masih kosong. Tidak ada data yang perlu diperbaiki.');
+    return;
+  }
+
+  const repaired = repairWahyuNppInSheet_(sheet);
+  Logger.log(repaired ? 'NPP Wahyu Hidayat diperbaiki menjadi 042645239B.' : 'NPP Wahyu Hidayat sudah benar atau data belum ditemukan.');
+}
+
+function saveEmployee_(recordInput, updatedBy) {
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_EMPLOYEE);
+  if (!sheet) {
+    setupEmployeeDatabase_();
+    sheet = ss.getSheetByName(SHEET_EMPLOYEE);
+  }
+
+  const record = normalizeEmployeeRecord_(applyKnownEmployeeCorrections_(recordInput));
+  if (!record.EMP_ID) record.EMP_ID = nextEmployeeIdInSheet_(sheet);
+
+  validateEmployeeRecord_(record, sheet);
+
+  const rowIndex = findEmployeeRowById_(sheet, record.EMP_ID);
+  const rowValues = employeeRowFromRecord_(record, updatedBy);
+
+  const targetRow = rowIndex || (sheet.getLastRow() + 1);
+  sheet.getRange(targetRow, 1, 1, 1 + EMPLOYEE_HEADERS.length).setNumberFormat('@');
+  sheet.getRange(targetRow, 1, 1, EMPLOYEE_COLUMNS.length).setValues([rowValues]);
+  SpreadsheetApp.flush();
+
+  return jsonResponse_({
+    success: true,
+    message: `Data pegawai ${record.NAMA || record.NPP || record.EMP_ID} berhasil disimpan.`,
+    data: employeeRecordFromRow_(rowValues)
+  });
+}
+
+function bulkUpsertEmployees_(employees, updatedBy) {
+  if (!Array.isArray(employees) || employees.length === 0) {
+    throw new Error('Data migrasi pegawai kosong.');
+  }
+
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_EMPLOYEE);
+  if (!sheet) {
+    setupEmployeeDatabase_();
+    sheet = ss.getSheetByName(SHEET_EMPLOYEE);
+  }
+
+  // Existing database tetap dipertahankan; snapshot browser akan meng-upsert EMP_ID yang sama.
+  const existingRows = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, EMPLOYEE_COLUMNS.length).getValues()
+    : [];
+
+  const map = new Map();
+  existingRows.forEach(row => {
+    const rec = normalizeEmployeeRecord_(applyKnownEmployeeCorrections_(employeeRecordFromRow_(row)));
+    if (rec.EMP_ID) map.set(rec.EMP_ID, rec);
+  });
+
+  let nextId = Math.max(0, ...Array.from(map.keys()).map(employeeIdNumber_)) + 1;
+  const nppSeen = new Map();
+
+  employees.forEach(item => {
+    const rec = normalizeEmployeeRecord_(applyKnownEmployeeCorrections_(item || {}));
+    if (!rec.EMP_ID) rec.EMP_ID = 'EMP-' + String(nextId++).padStart(4, '0');
+
+    const npp = String(rec.NPP || '').trim().toUpperCase();
+    if (npp) {
+      const previous = nppSeen.get(npp);
+      if (previous && previous !== rec.EMP_ID) {
+        throw new Error(`NPP ${npp} duplikat pada data migrasi.`);
+      }
+      nppSeen.set(npp, rec.EMP_ID);
+    }
+
+    map.set(rec.EMP_ID, rec);
+  });
+
+  // Cek NPP duplicate pada hasil akhir.
+  const finalNpp = new Map();
+  for (const rec of map.values()) {
+    const npp = String(rec.NPP || '').trim().toUpperCase();
+    if (!npp) continue;
+    const prior = finalNpp.get(npp);
+    if (prior && prior !== rec.EMP_ID) {
+      throw new Error(`NPP ${npp} digunakan oleh lebih dari satu pegawai (${prior} dan ${rec.EMP_ID}).`);
+    }
+    finalNpp.set(npp, rec.EMP_ID);
+  }
+
+  const records = Array.from(map.values())
+    .sort((a, b) => employeeIdNumber_(a.EMP_ID) - employeeIdNumber_(b.EMP_ID));
+
+  const rows = records.map(rec => employeeRowFromRecord_(rec, updatedBy));
+
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, EMPLOYEE_COLUMNS.length).clearContent();
+  }
+
+  if (rows.length) {
+    sheet.getRange(2, 1, rows.length, 1 + EMPLOYEE_HEADERS.length).setNumberFormat('@');
+    sheet.getRange(2, 1, rows.length, EMPLOYEE_COLUMNS.length).setValues(rows);
+  }
+
+  SpreadsheetApp.flush();
+
+  return jsonResponse_({
+    success: true,
+    message: `${employees.length} data browser diproses. Database Pegawai kini berisi ${records.length} pegawai.`,
+    count: records.length,
+    migratedCount: employees.length
+  });
+}
+
+function normalizeEmployeeRecord_(input) {
+  const out = { EMP_ID: String(input.EMP_ID || '').trim().toUpperCase() };
+  EMPLOYEE_HEADERS.forEach(field => {
+    let value = input[field];
+    if (value === null || value === undefined) value = '';
+    if (value instanceof Date && EMPLOYEE_DATE_FIELDS.has(field)) {
+      value = Utilities.formatDate(value, TIMEZONE, 'dd/MM/yyyy');
+    }
+    out[field] = String(value).trim();
+  });
+  out.NPP = String(out.NPP || '').toUpperCase();
+  return out;
+}
+
+function validateEmployeeRecord_(record, sheet) {
+  if (!record.NPP) throw new Error('NPP wajib diisi.');
+  if (!/^[A-Z0-9]+$/i.test(record.NPP)) throw new Error('NPP hanya boleh berisi huruf dan angka.');
+  if (!record.NAMA) throw new Error('Nama pegawai wajib diisi.');
+  if (record.EMAIL && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.EMAIL)) {
+    throw new Error('Format email pegawai belum valid.');
+  }
+
+  if (sheet.getLastRow() <= 1) return;
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, EMPLOYEE_COLUMNS.length).getValues();
+  for (const row of rows) {
+    const otherId = String(row[0] || '').trim().toUpperCase();
+    const nppCol = 1 + EMPLOYEE_HEADERS.indexOf('NPP');
+    const otherNpp = String(row[nppCol] || '').trim().toUpperCase();
+    if (otherNpp && otherNpp === record.NPP && otherId !== record.EMP_ID) {
+      throw new Error(`NPP ${record.NPP} sudah digunakan pegawai lain (${otherId}).`);
+    }
+  }
+}
+
+function employeeRecordFromRow_(row) {
+  const record = { EMP_ID: String(row[0] || '').trim() };
+  EMPLOYEE_HEADERS.forEach((field, idx) => {
+    let value = row[idx + 1];
+    if (value instanceof Date && EMPLOYEE_DATE_FIELDS.has(field)) {
+      value = Utilities.formatDate(value, TIMEZONE, 'dd/MM/yyyy');
+    }
+    if (value === null || value === undefined) value = '';
+    record[field] = String(value).trim();
+  });
+  return record;
+}
+
+function employeeRowFromRecord_(record, updatedBy) {
+  const normalized = normalizeEmployeeRecord_(record);
+  return [
+    normalized.EMP_ID,
+    ...EMPLOYEE_HEADERS.map(field => normalized[field] || ''),
+    new Date(),
+    String(updatedBy || 'Portal HCU Sumsel')
+  ];
+}
+
+function findEmployeeRowById_(sheet, empId) {
+  if (sheet.getLastRow() <= 1) return 0;
+  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  const target = String(empId || '').trim().toUpperCase();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0] || '').trim().toUpperCase() === target) return i + 2;
+  }
+  return 0;
+}
+
+function nextEmployeeIdInSheet_(sheet) {
+  if (sheet.getLastRow() <= 1) return 'EMP-0001';
+  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().flat();
+  const max = Math.max(0, ...ids.map(employeeIdNumber_));
+  return 'EMP-' + String(max + 1).padStart(4, '0');
+}
+
+function employeeIdNumber_(value) {
+  const m = String(value || '').match(/(\d+)/);
+  return m ? Number(m[1]) : 0;
+}
+
+// ============================================================
+// PROCUREMENT API
+// ============================================================
+function listProcurements_() {
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_PROCUREMENT);
+  if (!sheet) {
+    return jsonResponse_({ success: true, data: [], count: 0, databaseReady: false, message: 'Sheet Procurement belum tersedia. Jalankan setupDatabase().' });
+  }
+  if (migrateProcurementRemoveDisplayNo_(sheet)) setupProcurementDatabase_();
+  if (sheet.getLastRow() <= 1) return jsonResponse_({ success: true, data: [], count: 0, databaseReady: true });
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROCUREMENT_COLUMNS.length).getValues();
+  const data = values.filter(row => String(row[0] || '').trim()).map(procurementRecordFromRow_);
+  data.sort((a,b) => Number(b.TAHUN||0) - Number(a.TAHUN||0) || String(a['NAMA RUP']||'').localeCompare(String(b['NAMA RUP']||'')));
+  return jsonResponse_({ success: true, data, count: data.length, databaseReady: true });
+}
+
+function getProcurement_(procId) {
+  const ss = getSpreadsheet_();
+  let sheet = getRequiredSheet_(ss, SHEET_PROCUREMENT);
+  if (migrateProcurementRemoveDisplayNo_(sheet)) { setupProcurementDatabase_(); sheet = getRequiredSheet_(ss, SHEET_PROCUREMENT); }
+  const targetId = String(procId || '').trim().toUpperCase();
+  if (!targetId) return jsonResponse_({ success: false, message: 'PROC_ID procurement wajib diisi.' });
+  const rowIndex = findProcurementRow_(sheet, targetId);
+  if (!rowIndex) return jsonResponse_({ success: false, message: 'Data procurement tidak ditemukan.' });
+  const row = sheet.getRange(rowIndex, 1, 1, PROCUREMENT_COLUMNS.length).getValues()[0];
+  return jsonResponse_({ success: true, data: procurementRecordFromRow_(row) });
+}
+
+function saveProcurement_(recordInput, updatedBy) {
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_PROCUREMENT);
+  if (!sheet) { setupProcurementDatabase_(); sheet = ss.getSheetByName(SHEET_PROCUREMENT); }
+  if (migrateProcurementRemoveDisplayNo_(sheet)) { setupProcurementDatabase_(); sheet = ss.getSheetByName(SHEET_PROCUREMENT); }
+
+  const draft = Object.assign({}, recordInput || {});
+  delete draft.No;
+  if (!String(draft.PROC_ID || '').trim()) draft.PROC_ID = generateProcurementId_();
+
+  const record = normalizeProcurementRecord_(draft);
+  if (!record.PROC_ID) throw new Error('PROC_ID procurement tidak valid.');
+  if (!record.TAHUN) throw new Error('Tahun procurement wajib diisi.');
+  if (!record.KRITERIA) throw new Error('Kriteria procurement wajib diisi.');
+  if (!record['NAMA RUP']) throw new Error('Nama RUP wajib diisi.');
+  if (!['CAPEX','OPEX'].includes(record.MODE)) throw new Error('Mode harus CAPEX atau OPEX.');
+  const allowedTender = ['Pengadaan Langsung','Tender Terbatas','Tender','Tender Dikecualikan'];
+  if (!allowedTender.includes(record.JENIS_PENGADAAN)) throw new Error('Jenis Tender tidak valid.');
+  const stageDatePairs = [
+    ['SPPH','TGL_SPPH','SPPH'],['SPH','TGL_SPH','SPH'],['NEGO','TGL_NEGO','Nego'],
+    ['PEMENANG','TGL_PEMENANG','Pemenang'],['SP/SPK/PPP','TGL_PESAN_SPK_PPP','SP / SPK / PPP'],
+    ['LPP/BAST','TGL LPP/BAST','LPP / BAST']
+  ];
+  for (const [flag,dateField,label] of stageDatePairs) {
+    if (record[flag] && !record[dateField]) throw new Error(`Tanggal tahap ${label} wajib diisi karena checkbox sudah dicentang.`);
+  }
+
+  let targetRow = findProcurementRow_(sheet, record.PROC_ID);
+  if (!targetRow) targetRow = sheet.getLastRow() + 1;
+  const rowValues = procurementRowFromRecord_(record, updatedBy);
+  sheet.getRange(targetRow, 1, 1, PROCUREMENT_COLUMNS.length).setValues([rowValues]);
+  SpreadsheetApp.flush();
+  return jsonResponse_({ success: true, message: 'Data Procurement berhasil disimpan.', data: record });
+}
+
+function bulkUpsertProcurements_(items, updatedBy) {
+  if (!Array.isArray(items)) throw new Error('Data procurement migrasi tidak valid.');
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_PROCUREMENT);
+  if (!sheet) { setupProcurementDatabase_(); sheet = ss.getSheetByName(SHEET_PROCUREMENT); }
+  if (migrateProcurementRemoveDisplayNo_(sheet)) { setupProcurementDatabase_(); sheet = ss.getSheetByName(SHEET_PROCUREMENT); }
+
+  for (let i = 0; i < items.length; i++) {
+    const item = Object.assign({}, items[i] || {});
+    const legacyNo = Math.max(0, Math.trunc(number_(item.No)));
+    if (!String(item.PROC_ID || '').trim()) item.PROC_ID = legacyNo ? ('PROC-' + String(legacyNo).padStart(4, '0')) : generateProcurementId_();
+    delete item.No;
+    const record = normalizeProcurementRecord_(item);
+    if (!record.PROC_ID || !record['NAMA RUP']) continue;
+    let targetRow = findProcurementRow_(sheet, record.PROC_ID);
+    if (!targetRow) targetRow = sheet.getLastRow() + 1;
+    sheet.getRange(targetRow, 1, 1, PROCUREMENT_COLUMNS.length).setValues([procurementRowFromRecord_(record, updatedBy)]);
+  }
+  SpreadsheetApp.flush();
+  const count = Math.max(0, sheet.getLastRow() - 1);
+  return jsonResponse_({ success: true, message: `${items.length} data procurement diproses. Database kini berisi ${count} paket.`, count });
+}
+
+function normalizeProcurementRecord_(input) {
+  const out = {};
+  PROCUREMENT_HEADERS.forEach(field => {
+    let value = input[field];
+    if (value === null || value === undefined) value = '';
+    if (PROCUREMENT_NUMBER_FIELDS.has(field)) value = number_(value);
+    else if (PROCUREMENT_BOOL_FIELDS.has(field)) value = procurementBool_(value);
+    else if (PROCUREMENT_DATE_FIELDS.has(field)) value = normalizeProcurementDate_(value);
+    else value = String(value).trim();
+    out[field] = value;
+  });
+  out.TAHUN = Math.max(0, Math.trunc(number_(out.TAHUN)));
+  out.LAMA_KERJA = Math.max(0, Math.trunc(number_(out.LAMA_KERJA)));
+  out.PROC_ID = String(input.PROC_ID || '').trim().toUpperCase();
+  return recalculateProcurement_(out);
+}
+
+function recalculateProcurement_(r) {
+  r.ANGGARAN = number_(r.ANGGARAN);
+  r.NOMINAL = number_(r.NOMINAL);
+  r.NOMINAL_KONTRAK = number_(r.NOMINAL_KONTRAK);
+  r.EFISIENSI = r.ANGGARAN - r.NOMINAL_KONTRAK;
+
+  const doneCount = PROCUREMENT_STAGE_FIELDS.filter(field => procurementBool_(r[field])).length;
+  r.PROGRESS = Math.round((doneCount / PROCUREMENT_STAGE_FIELDS.length) * 10000) / 100;
+  r.STATUS_PEKERJAAN = r.PROGRESS === 100 ? 'DONE' : (r.PROGRESS === 0 ? 'Not Yet' : 'On Progress');
+
+  const start = procurementDateObject_(r.TGL_AWAL_SPK);
+  if (start && r.LAMA_KERJA > 0) {
+    const end = new Date(start.getTime());
+    end.setDate(end.getDate() + Math.max(0, r.LAMA_KERJA - 1));
+    r.TGL_AKHIR_SPK = formatProcurementDate_(end);
+  } else {
+    r.TGL_AKHIR_SPK = '';
+  }
+
+  const today = procurementToday_();
+  if (!start) r.STATUS_KERJA = 'Tender Belum Berjalan';
+  else {
+    const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    r.STATUS_KERJA = startDay > today ? 'Not Yet' : 'On Progress';
+  }
+
+  const end = procurementDateObject_(r.TGL_AKHIR_SPK);
+  if (end) {
+    const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    r.JML_DAYS = Math.round((endDay.getTime() - today.getTime()) / 86400000);
+  } else r.JML_DAYS = 0;
+  return r;
+}
+
+function procurementRecordFromRow_(row) {
+  const raw = { PROC_ID: String(row[0] || '').trim() };
+  PROCUREMENT_HEADERS.forEach((field, idx) => {
+    let value = row[idx + 1];
+    if (PROCUREMENT_NUMBER_FIELDS.has(field)) value = number_(value);
+    else if (PROCUREMENT_BOOL_FIELDS.has(field)) value = procurementBool_(value);
+    else if (PROCUREMENT_DATE_FIELDS.has(field)) value = normalizeProcurementDate_(value);
+    else value = value === null || value === undefined ? '' : String(value).trim();
+    raw[field] = value;
+  });
+  return recalculateProcurement_(raw);
+}
+
+function procurementRowFromRecord_(record, updatedBy) {
+  const r = normalizeProcurementRecord_(record);
+  return [r.PROC_ID, ...PROCUREMENT_HEADERS.map(field => r[field] === undefined ? '' : r[field]), new Date(), String(updatedBy || 'Portal HCU Sumsel')];
+}
+
+function generateProcurementId_() {
+  return 'PROC-' + Utilities.getUuid().replace(/-/g, '').slice(0, 12).toUpperCase();
+}
+
+function findProcurementRow_(sheet, procId) {
+  if (!sheet || sheet.getLastRow() <= 1) return 0;
+  const id = String(procId || '').trim().toUpperCase();
+  if (!id) return 0;
+  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getDisplayValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0] || '').trim().toUpperCase() === id) return i + 2;
+  }
+  return 0;
+}
+
+function procurementBool_(value) {
+  if (typeof value === 'boolean') return value;
+  return ['true','1','yes','ya','checked'].indexOf(String(value || '').trim().toLowerCase()) >= 0;
+}
+
+function normalizeProcurementDate_(value) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value.getTime())) return formatProcurementDate_(value);
+  const s = String(value).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}T${m[4] || '00'}:${m[5] || '00'}`;
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}T${String(m[4] || '00').padStart(2,'0')}:${m[5] || '00'}`;
+  return '';
+}
+
+function procurementDateObject_(value) {
+  const s = normalizeProcurementDate_(value);
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]), Number(m[4]), Number(m[5]), 0, 0);
+}
+
+function formatProcurementDate_(date) {
+  return Utilities.formatDate(date, TIMEZONE, "yyyy-MM-dd'T'HH:mm");
+}
+
+function procurementToday_() {
+  const s = Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd');
+  const p = s.split('-').map(Number);
+  return new Date(p[0], p[1]-1, p[2]);
+}
+
+// ============================================================
+// LHU API
+// ============================================================
+function saveLHU_(payload) {
+  const period = normalizePeriodInput_(payload.period);
+  if (!period) throw new Error('Periode tidak valid. Gunakan format YYYY-MM.');
+
+  const unit = String(payload.unit || '').trim();
+  if (!unit) throw new Error('Unit/Loket belum diisi.');
+  if (!Array.isArray(payload.rows)) throw new Error('Data detail LHU tidak ditemukan.');
+
+  const [yearText, monthText] = period.split('-');
+  const year = Number(yearText);
+  const monthNumber = Number(monthText);
+  const monthName = MONTH_NAMES[monthNumber - 1];
+  const lhuId = buildLhuId_(period, unit);
+
+  const ss = getSpreadsheet_();
+  const headerSheet = getRequiredSheet_(ss, SHEET_HEADER);
+  const detailSheet = getRequiredSheet_(ss, SHEET_DETAIL);
+  headerSheet.getRange(1, 2, headerSheet.getMaxRows(), 1).setNumberFormat('@');
+
+  const existing = findHeaderById_(headerSheet, lhuId);
+  let oldFileId = existing ? existing.driveFileId || '' : '';
+  let fileId = oldFileId;
+  let fileUrl = existing ? existing.driveFileUrl || '' : '';
+
+  if (payload.pdfBase64) {
+    const folder = getPeriodFolder_(period);
+    const filename = String(payload.filename || `LHU ${unit} ${monthName} ${year}.pdf`).trim();
+    const cleanBase64 = String(payload.pdfBase64)
+      .replace(/^data:application\/pdf;base64,/i, '');
+
+    let bytes;
+    try { bytes = Utilities.base64Decode(cleanBase64); }
+    catch (err) { throw new Error('PDF tidak dapat dibaca dari Base64.'); }
+
+    const blob = Utilities.newBlob(bytes, 'application/pdf', filename);
+    if (oldFileId) {
+      try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (err) {}
+    }
+    const file = folder.createFile(blob);
+    fileId = file.getId();
+    fileUrl = file.getUrl();
+  }
+
+  deleteDetailByLhuId_(detailSheet, lhuId);
+
+  const jenis = unit === 'Kanwil Sumsel' ? 'Verifikasi' : 'Loket';
+  const uploader = String(payload.uploadedBy || 'Portal HCU');
+  const filename = String(payload.filename || (existing ? existing.filename || '' : ''));
+  const headerValues = [
+    lhuId, period, year, monthName, unit, jenis, filename,
+    fileId, fileUrl, new Date(), uploader, 'AKTIF'
+  ];
+
+  if (existing) {
+    headerSheet.getRange(existing.row, 2).setNumberFormat('@');
+    headerSheet.getRange(existing.row, 1, 1, headerValues.length).setValues([headerValues]);
+  } else {
+    const newRow = headerSheet.getLastRow() + 1;
+    headerSheet.getRange(newRow, 2).setNumberFormat('@');
+    headerSheet.getRange(newRow, 1, 1, headerValues.length).setValues([headerValues]);
+  }
+
+  const rows = payload.rows.map(row => [
+    lhuId,
+    String(row.key || ''), String(row.label || ''), String(row.category || ''),
+    number_(row.lastYear), number_(row.month), number_(row.ytd), number_(row.budget),
+    number_(row.growth), number_(row.real), number_(row.cycle), number_(row.cycleNext)
+  ]);
+
+  if (rows.length) {
+    detailSheet.getRange(detailSheet.getLastRow() + 1, 1, rows.length, DETAIL_COLUMNS.length)
+      .setValues(rows);
+  }
+
+  SpreadsheetApp.flush();
+  return jsonResponse_({
+    success: true,
+    message: `LHU ${unit} ${monthName} ${year} berhasil disimpan.`,
+    data: { lhuId, period, year, month: monthName, unit, type: jenis, filename, driveFileId: fileId, driveFileUrl: fileUrl }
+  });
+}
+
+function listLHU_() {
+  const ss = getSpreadsheet_();
+  const sheet = getRequiredSheet_(ss, SHEET_HEADER);
+  if (sheet.getLastRow() <= 1) return jsonResponse_({ success: true, data: [] });
+
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADER_COLUMNS.length).getValues();
+  const data = values
+    .filter(row => String(row[11] || '').trim().toUpperCase() === 'AKTIF')
+    .map(row => {
+      const period = normalizePeriod_(row[1], row[0]);
+      return {
+        lhuId: String(row[0] || ''),
+        period,
+        year: period ? Number(period.substring(0, 4)) : row[2],
+        month: period ? MONTH_NAMES[Number(period.substring(5, 7)) - 1] : row[3],
+        unit: String(row[4] || ''),
+        type: String(row[5] || ''),
+        filename: String(row[6] || ''),
+        driveFileId: String(row[7] || ''),
+        driveFileUrl: String(row[8] || ''),
+        importedAt: dateToIso_(row[9]),
+        uploadedBy: String(row[10] || ''),
+        status: String(row[11] || '')
+      };
+    })
+    .sort((a, b) => String(b.period || '').localeCompare(String(a.period || '')) || String(a.unit).localeCompare(String(b.unit)));
+
+  return jsonResponse_({ success: true, data });
+}
+
+function getLHU_(period, unit) {
+  const cleanPeriod = normalizePeriodInput_(period);
+  const cleanUnit = String(unit || '').trim();
+  if (!cleanPeriod || !cleanUnit) {
+    return jsonResponse_({ success: false, message: 'Parameter period dan unit wajib diisi.' });
+  }
+
+  const lhuId = buildLhuId_(cleanPeriod, cleanUnit);
+  const ss = getSpreadsheet_();
+  const headerSheet = getRequiredSheet_(ss, SHEET_HEADER);
+  const detailSheet = getRequiredSheet_(ss, SHEET_DETAIL);
+  const header = findHeaderById_(headerSheet, lhuId);
+
+  if (!header || String(header.status || '').toUpperCase() !== 'AKTIF') {
+    return jsonResponse_({ success: false, message: 'LHU tidak ditemukan.' });
+  }
+
+  const details = [];
+  if (detailSheet.getLastRow() > 1) {
+    const values = detailSheet.getRange(2, 1, detailSheet.getLastRow() - 1, DETAIL_COLUMNS.length).getValues();
+    values.forEach(row => {
+      if (String(row[0] || '') === lhuId) {
+        details.push({
+          key: String(row[1] || ''), label: String(row[2] || ''), category: String(row[3] || ''),
+          lastYear: number_(row[4]), month: number_(row[5]), ytd: number_(row[6]), budget: number_(row[7]),
+          growth: number_(row[8]), real: number_(row[9]), cycle: number_(row[10]), cycleNext: number_(row[11])
+        });
+      }
+    });
+  }
+
+  return jsonResponse_({
+    success: true,
+    data: {
+      lhuId: header.lhuId,
+      period: normalizePeriod_(header.period, header.lhuId),
+      unit: header.unit,
+      type: header.type,
+      filename: header.filename,
+      driveFileId: header.driveFileId,
+      driveFileUrl: header.driveFileUrl,
+      importedAt: dateToIso_(header.importedAt),
+      uploadedBy: header.uploadedBy,
+      rows: details
+    }
+  });
+}
+
+function deleteLHU_(period, unit) {
+  const cleanPeriod = normalizePeriodInput_(period);
+  const cleanUnit = String(unit || '').trim();
+  if (!cleanPeriod || !cleanUnit) throw new Error('Period dan unit wajib diisi.');
+
+  const lhuId = buildLhuId_(cleanPeriod, cleanUnit);
+  const ss = getSpreadsheet_();
+  const headerSheet = getRequiredSheet_(ss, SHEET_HEADER);
+  const detailSheet = getRequiredSheet_(ss, SHEET_DETAIL);
+  const existing = findHeaderById_(headerSheet, lhuId);
+
+  if (!existing) return jsonResponse_({ success: false, message: 'Data LHU tidak ditemukan.' });
+
+  if (existing.driveFileId) {
+    try { DriveApp.getFileById(existing.driveFileId).setTrashed(true); } catch (err) {}
+  }
+  headerSheet.getRange(existing.row, 12).setValue('DIHAPUS');
+  deleteDetailByLhuId_(detailSheet, lhuId);
+  SpreadsheetApp.flush();
+
+  return jsonResponse_({ success: true, message: `LHU ${cleanUnit} periode ${cleanPeriod} berhasil dihapus.` });
+}
+
+function repairLhuPeriods() {
+  const ss = getSpreadsheet_();
+  const sheet = getRequiredSheet_(ss, SHEET_HEADER);
+  if (sheet.getLastRow() <= 1) return;
+
+  sheet.getRange(1, 2, sheet.getMaxRows(), 1).setNumberFormat('@');
+  for (let row = 2; row <= sheet.getLastRow(); row++) {
+    const lhuId = sheet.getRange(row, 1).getValue();
+    const currentPeriod = sheet.getRange(row, 2).getValue();
+    const correctPeriod = normalizePeriod_(currentPeriod, lhuId);
+    if (!correctPeriod) continue;
+    const parts = correctPeriod.split('-');
+    sheet.getRange(row, 2).setNumberFormat('@').setValue(correctPeriod);
+    sheet.getRange(row, 3).setValue(Number(parts[0]));
+    sheet.getRange(row, 4).setValue(MONTH_NAMES[Number(parts[1]) - 1] || '');
+  }
+  SpreadsheetApp.flush();
+}
+
+// ============================================================
+// SHARED HELPERS
+// ============================================================
+function ensureHeaders_(sheet, headers) {
+  const current = sheet.getLastColumn() > 0
+    ? sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length)).getValues()[0]
+    : [];
+
+  const needsWrite = headers.some((h, i) => String(current[i] || '') !== h);
+  if (sheet.getLastRow() === 0 || needsWrite) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+}
+
+function getSpreadsheet_() {
+  const id = PROP.getProperty('SPREADSHEET_ID');
+  if (!id) throw new Error('SPREADSHEET_ID belum diatur di Script Properties.');
+  try { return SpreadsheetApp.openById(id); }
+  catch (err) { throw new Error('Google Sheets tidak dapat dibuka. Periksa SPREADSHEET_ID.'); }
+}
+
+function getRequiredSheet_(ss, sheetName) {
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error(`Sheet "${sheetName}" tidak ditemukan. Jalankan setupDatabase().`);
+  return sheet;
+}
+
+function getPeriodFolder_(period) {
+  const rootId = PROP.getProperty('LHU_FOLDER_ID');
+  if (!rootId) throw new Error('LHU_FOLDER_ID belum diatur di Script Properties.');
+
+  let root;
+  try { root = DriveApp.getFolderById(rootId); }
+  catch (err) { throw new Error('Folder Google Drive LHU tidak dapat dibuka. Periksa LHU_FOLDER_ID.'); }
+
+  const cleanPeriod = normalizePeriodInput_(period);
+  if (!cleanPeriod) throw new Error('Periode folder tidak valid.');
+  const parts = cleanPeriod.split('-');
+  const year = parts[0];
+  const month = MONTH_NAMES[Number(parts[1]) - 1];
+  return getOrCreateFolder_(getOrCreateFolder_(root, year), month);
+}
+
+function getOrCreateFolder_(parent, name) {
+  const folders = parent.getFoldersByName(name);
+  return folders.hasNext() ? folders.next() : parent.createFolder(name);
+}
+
+function buildLhuId_(period, unit) {
+  const unitMap = { 'Palembang':'PLG', 'Lahat':'LHT', 'Baturaja':'BTA', 'Kanwil Sumsel':'KWL' };
+  const unitCode = unitMap[unit] || String(unit || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return 'LHU-' + String(period).replace('-', '') + '-' + unitCode;
+}
+
+function findHeaderById_(sheet, lhuId) {
+  if (sheet.getLastRow() <= 1) return null;
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADER_COLUMNS.length).getValues();
+  for (let i = 0; i < values.length; i++) {
+    const row = values[i];
+    if (String(row[0] || '') === String(lhuId)) {
+      return {
+        row: i + 2,
+        lhuId: String(row[0] || ''),
+        period: normalizePeriod_(row[1], row[0]),
+        year: row[2], month: row[3], unit: String(row[4] || ''), type: String(row[5] || ''),
+        filename: String(row[6] || ''), driveFileId: String(row[7] || ''), driveFileUrl: String(row[8] || ''),
+        importedAt: row[9], uploadedBy: String(row[10] || ''), status: String(row[11] || '')
+      };
+    }
+  }
+  return null;
+}
+
+function deleteDetailByLhuId_(sheet, lhuId) {
+  if (sheet.getLastRow() <= 1) return;
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, DETAIL_COLUMNS.length).getValues();
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (String(values[i][0] || '') === String(lhuId)) sheet.deleteRow(i + 2);
+  }
+}
+
+function normalizePeriod_(value, lhuId) {
+  const idMatch = String(lhuId || '').match(/^LHU-(\d{4})(\d{2})-/);
+  if (idMatch) return idMatch[1] + '-' + idMatch[2];
+
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, TIMEZONE, 'yyyy-MM');
+  }
+
+  const text = String(value || '').trim();
+  const normal = text.match(/^(\d{4})-(\d{2})$/);
+  if (normal) return normal[1] + '-' + normal[2];
+
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    const parsed = new Date(text);
+    if (!isNaN(parsed.getTime())) return Utilities.formatDate(parsed, TIMEZONE, 'yyyy-MM');
+  }
+  return text;
+}
+
+function normalizePeriodInput_(value) {
+  const result = normalizePeriod_(value, '');
+  if (/^\d{4}-\d{2}$/.test(result)) {
+    const month = Number(result.substring(5, 7));
+    if (month >= 1 && month <= 12) return result;
+  }
+  return '';
+}
+
+function validateToken_(token) {
+  const configured = PROP.getProperty('API_TOKEN');
+  return !!configured && token !== null && token !== undefined && String(token) === String(configured);
+}
+
+function readRequestBody_(e) {
+  if (!e || !e.postData || !e.postData.contents) return {};
+  try { return JSON.parse(e.postData.contents); }
+  catch (err) { throw new Error('Body request bukan JSON yang valid.'); }
+}
+
+function number_(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  const n = Number(String(value).trim());
+  return isNaN(n) ? 0 : n;
+}
+
+function dateToIso_(value) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value.getTime())) return value.toISOString();
+  const parsed = new Date(value);
+  return !isNaN(parsed.getTime()) ? parsed.toISOString() : String(value);
+}
+
+function jsonResponse_(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function errorResponse_(err) {
+  console.error(err);
+  return jsonResponse_({ success: false, message: err && err.message ? err.message : String(err) });
+}
