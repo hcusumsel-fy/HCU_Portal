@@ -1624,7 +1624,7 @@ async function employeeMigrateBrowserToDatabase(){
   const fresh=await employeeApiGet('listEmployees');
   employeeReplaceWithRemote(fresh.data||[]);employeeRemoteReady=true;
   show(currentPage==='dashboard'?'dashboard':'pegawai');
-  setTimeout(()=>toast(result.message||'Data pegawai browser berhasil dimigrasikan ke spreadsheet.','success'),60);
+  setTimeout(()=>toast(result.message||'Data pegawai browser berhasil dimigrasikan ke Fy_Db.','success'),60);
  }catch(e){employeeRemoteError=e.message||'Migrasi pegawai gagal.';toast(`GAGAL • ${employeeRemoteError}`,'error');}
  finally{employeeRemoteLoading=false;}
 }
@@ -1745,7 +1745,7 @@ function formatTodayID(){
   }).format(APP_TODAY);
 }
 
-// Nilai spreadsheet lama tetap disimpan sebagai _SOURCE_* untuk referensi.
+// Nilai Fy_Db lama tetap disimpan sebagai _SOURCE_* untuk referensi.
 // Tampilan aplikasi memakai hasil kalkulasi terbaru.
 EMPLOYEES.forEach(e=>{
   e._SOURCE_MKE=e.MKE;
@@ -2289,7 +2289,7 @@ function dashboardPage(){
  <div class="panel action-center-wide"><div class="panel-head"><h3>Action Center</h3><span>ringkasan pekerjaan</span></div><div class="actions-list">
   <div class="act"><i class="sev blue"></i><div><b>Aset masih dalam pinjam pakai</b><small>Monitoring pemegang aktif</small></div><strong>${ASSETS.filter(a=>a.Status==='Dipinjam').length}</strong></div>
   <div class="act"><i class="sev amber"></i><div><b>Aset di Gudang Kanwil</b><small>Sudah dikembalikan, perlu pengecekan kondisi</small></div><strong>${returned}</strong></div>
-  <div class="act"><i class="sev red"></i><div><b>Aset terindikasi error/perbaikan</b><small>Berdasarkan keterangan pada spreadsheet</small></div><strong>${repair}</strong></div>
+  <div class="act"><i class="sev red"></i><div><b>Aset terindikasi error/perbaikan</b><small>Berdasarkan keterangan pada Fy_Db</small></div><strong>${repair}</strong></div>
  </div></div>`;
 }
 
@@ -2330,7 +2330,7 @@ function pegawaiPage(){
  const branchByWork=buildWorkLocationUnitMap();
  const hc=(name)=>{const a=activeByWork[name]||0,t=totalByWork[name]||0,pct=Math.round(a/maxActive*100),unit=branchByWork[name]||'Kanwil Sumsel';return `<div class="hc-item" onclick="filterWorkLocationFromMap(${JSON.stringify(name)})"><div class="hc-top"><div class="hc-name-row"><i class="hc-dot" style="background:${regionColor(unit)}"></i><div class="hc-name">${esc(name)}</div></div><div class="hc-num">${a}</div></div><div class="hc-meta"><span>${esc(unit)}</span><span>${t} total data</span></div><div class="hc-bar"><i style="width:${pct}%;background:${regionColor(unit)}"></i></div></div>`;};
  return `<div class="hero"><div><h1>Data Pegawai</h1><p>Peta menggunakan <b>Loket_Kerja</b> sebagai titik lokasi, sedangkan warna area dan pin mengikuti kolom <b>LOKET</b>: Kanwil Sumsel, Cabang Baturaja, dan Cabang Lahat.</p></div><div class="chip">${ACTIVE_EMPLOYEES.length} aktif • ${EMPLOYEES.length} total</div></div>
- <div class="privacy-note">INTERNAL HCU • Form pegawai memuat seluruh kolom dari spreadsheet terbaru, termasuk data kontak. Gunakan portal ini hanya pada akses internal/terproteksi.</div>
+ <div class="privacy-note">INTERNAL HCU • Form pegawai memuat seluruh kolom dari Fy_Db terbaru, termasuk data kontak. Gunakan portal ini hanya pada akses internal/terproteksi.</div>
  ${employeeDatabaseStatusHtml()}
  <div class="employee-overview">
    <div class="location-map-card">
@@ -3231,7 +3231,7 @@ function inventarisPage(){
  <div class="panel" style="margin-top:16px"><div class="toolbar"><input id="assetSearch" placeholder="Cari asset / nomor asset / pemegang" oninput="filterAssets()"><select id="assetCat" onchange="filterAssets()"><option value="">Semua Jenis</option>${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select><select id="assetStatus" onchange="filterAssets()"><option value="">Semua Status</option><option>Dipinjam</option><option>Dikembalikan</option><option>Perbaikan</option></select></div>
  <div class="countline" id="assetCount">Menampilkan ${ASSETS.length} aset.</div><div class="click-help">💡 <b>Klik salah satu baris aset</b> untuk mengubah kondisi, status, dan catatan aset.</div>
  <div class="table-wrap"><table class="tbl"><thead><tr><th>Asset ID</th><th>No. Asset</th><th>Nama Asset / SN</th><th>Jenis</th><th>Pemegang</th><th>Lokasi</th><th>Kondisi</th><th>Status</th><th>Keterangan Sumber</th></tr></thead><tbody id="assetBody">${assetRows(ASSETS)}</tbody></table></div></div>
- <div class="note" style="margin-top:14px"><b>Catatan kondisi:</b> spreadsheet sumber belum memiliki kolom kondisi. Untuk menghindari asumsi, aset kembali diberi status <b>Belum diperiksa</b>; aset dengan keterangan “laptop error” ditandai <b>Rusak / Error</b>; aset lainnya <b>Belum diisi</b>. Pada versi live, kondisi dapat diubah melalui form pemeriksaan pengembalian.</div>`;
+ <div class="note" style="margin-top:14px"><b>Catatan kondisi:</b> Fy_Db sumber belum memiliki kolom kondisi. Untuk menghindari asumsi, aset kembali diberi status <b>Belum diperiksa</b>; aset dengan keterangan “laptop error” ditandai <b>Rusak / Error</b>; aset lainnya <b>Belum diisi</b>. Pada versi live, kondisi dapat diubah melalui form pemeriksaan pengembalian.</div>`;
 }
 function filterAssets(){
  const q=(document.getElementById('assetSearch')?.value||'').toLowerCase();
@@ -3723,7 +3723,7 @@ function openProcurementSummary(type,encodedLabel,yearFilter=0){
  }
  document.getElementById('procurementStatusModalTitle').textContent=title;
  document.getElementById('procurementStatusModalSubtitle').textContent=subtitle;
- document.getElementById('procurementStatusModalNote').textContent=`Menampilkan ${list.length} paket${selectedYear?` tahun ${selectedYear}`:''} untuk kategori “${label}”. Klik salah satu baris untuk membuka detail pengadaan. Progress berasal dari checklist tahapan procurement pada spreadsheet.`;
+ document.getElementById('procurementStatusModalNote').textContent=`Menampilkan ${list.length} paket${selectedYear?` tahun ${selectedYear}`:''} untuk kategori “${label}”. Klik salah satu baris untuk membuka detail pengadaan. Progress berasal dari checklist tahapan procurement pada Fy_Db.`;
  document.getElementById('procurementStatusModalCount').textContent=`${list.length} paket`;
  document.getElementById('procurementStatusModalBody').innerHTML=procurementDrilldownRows(list);
  document.getElementById('procurementStatusModal').classList.add('show');
