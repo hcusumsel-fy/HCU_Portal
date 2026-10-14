@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="referrer" content="no-referrer">
+  <title>Verifikasi Registrasi Surat | HCU Sumsel</title>
+  <link rel="stylesheet" href="/assets/verify-letter.css">
+</head>
+<body>
+<main>
+ <header><h1>Verifikasi Registrasi Surat</h1><p>Human Capital & Umum · Kantor Wilayah Sumatera Selatan</p></header>
+ <div class="content">
+  <div id="loading" class="loading" role="status">Memverifikasi identitas dokumen dari Fy_Database…</div>
+  <div id="error" class="error" role="alert" hidden></div>
+  <section id="result" hidden aria-label="Hasil verifikasi surat">
+   <div class="pill">✓ Dokumen terdaftar di sistem</div>
+   <div class="brand" id="brand"></div>
+   <p class="statement">Dokumen Surat No <strong id="number"></strong> ini telah diregistrasi dan diverifikasi secara elektronik oleh sistem sesuai peruntukannya atas nama :</p>
+   <dl>
+    <dt>Peran</dt><dd id="role"></dd>
+    <dt>Tanggal</dt><dd id="date"></dd>
+    <dt>Nama</dt><dd id="name"></dd>
+    <dt>Jabatan</dt><dd id="job"></dd>
+    <dt>NPP</dt><dd id="npp"></dd>
+    <dt>Jenis Surat</dt><dd id="documentType"></dd>
+   </dl>
+   <div class="rule"></div>
+   <div class="foot" id="notice"></div>
+  </section>
+ </div>
+ <footer>HCU Sumsel · Sistem verifikasi arsip internal</footer>
+</main>
+<script src="/assets/verify-letter.js" defer></script>
+</body></html>
